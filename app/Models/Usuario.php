@@ -53,7 +53,8 @@ class Usuario extends Model
         'activo' => 'boolean',
         'bloqueado' => 'boolean',
         'fecha_registro' => 'datetime',
-        'ultimo_acceso' => 'datetime'
+        'ultimo_acceso' => 'datetime',
+        'telefono' => 'encrypted',
     ];
     
     // ==============================================

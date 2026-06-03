@@ -27,7 +27,7 @@ class UsuarioSyncService
                 'hash_password' => $user->password,
                 'id_rol' => $extra['id_rol'] ?? $user->id_rol ?? 1,
                 'id_barrio' => $extra['id_barrio'] ?? $user->id_barrio,
-                'telefono' => isset($extra['telefono']) ? encrypt($extra['telefono']) : null,
+                'telefono' => $extra['telefono'] ?? null,
                 'activo' => true,
                 'bloqueado' => false,
                 'fecha_registro' => now(),

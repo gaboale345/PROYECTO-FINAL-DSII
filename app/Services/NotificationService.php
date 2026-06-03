@@ -123,10 +123,6 @@ class NotificationService
             return null;
         }
 
-        try {
-            return decrypt($usuario->telefono);
-        } catch (\Throwable) {
-            return $usuario->telefono;
-        }
+        return $usuario->telefono;
     }
 }
