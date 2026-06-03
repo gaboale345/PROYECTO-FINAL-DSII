@@ -114,7 +114,7 @@ Desarrollar e implementar un sistema web predictivo que mejore la seguridad ciud
 | **Policía** | Operador de seguridad ciudadana | Mapa de calor, reportes, validación |
 | **SuperAdministrador** | Gestor técnico del sistema | Usuarios, configuración, todos los permisos |
 | **Sistema (IA/Cron)** | Procesos automáticos | Predicciones, backups, fusión programada |
-| **WhatsApp API** | Canal externo de entrada | Webhook de mensajes → incidentes |
+
 
 ### 2.4. Diagrama de casos de uso
 
