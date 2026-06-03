@@ -7,6 +7,7 @@ use App\Http\Controllers\IncidenteController;
 use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\AlertaController;
 use App\Http\Controllers\WebhookController;
+use App\Http\Controllers\Admin\IncidenteAdminController;
 
 Route::get('/', function () {
     return auth()->check() ? redirect()->route('dashboard') : redirect()->route('login');
@@ -39,14 +40,19 @@ Route::middleware(['auth', 'throttle:global'])->group(function () {
     Route::get('/incidentes/create', [IncidenteController::class, 'create'])->middleware('can.report')->name('incidentes.create');
     Route::post('/incidentes', [IncidenteController::class, 'store'])->middleware('can.report')->name('incidentes.store');
     Route::get('/incidentes/{incidente}', [IncidenteController::class, 'show'])->name('incidentes.show');
-    Route::post('/incidentes/{id}/validar', [IncidenteController::class, 'validar'])->middleware('role:2,3,4')->name('incidentes.validar');
-    Route::post('/incidentes/{id}/marcar-falso', [IncidenteController::class, 'marcarFalso'])->middleware('role:2,3,4')->name('incidentes.marcar-falso');
-    Route::post('/incidentes/fusionar-duplicados', [IncidenteController::class, 'fusionarDuplicados'])->middleware('role:2,3,4')->name('incidentes.fusionar');
+    Route::post('/incidentes/{id}/validar', [IncidenteController::class, 'validar'])->middleware('role:2,4')->name('incidentes.validar');
+    Route::post('/incidentes/{id}/marcar-falso', [IncidenteController::class, 'marcarFalso'])->middleware('role:2,4')->name('incidentes.marcar-falso');
+    Route::post('/incidentes/fusionar-duplicados', [IncidenteController::class, 'fusionarDuplicados'])->middleware('role:2,4')->name('incidentes.fusionar');
 
     // Alertas predictivas
     Route::get('/alertas', [AlertaController::class, 'index'])->name('alertas.index');
 
     // Reportes PDF / estadísticos
-    Route::get('/reportes/mensual', [ReporteController::class, 'mensual'])->middleware('role:2,3,4')->name('reportes.mensual');
-    Route::get('/reportes/semanal', [ReporteController::class, 'semanal'])->middleware('role:2,3,4')->name('reportes.semanal');
+    Route::get('/reportes/mensual', [ReporteController::class, 'mensual'])->middleware('role:2,4')->name('reportes.mensual');
+    Route::get('/reportes/semanal', [ReporteController::class, 'semanal'])->middleware('role:2,4')->name('reportes.semanal');
+
+    // Panel SuperAdmin — CRUD incidentes
+    Route::middleware('role:4')->prefix('admin')->name('admin.')->group(function () {
+        Route::resource('incidentes', IncidenteAdminController::class)->except(['show']);
+    });
 });

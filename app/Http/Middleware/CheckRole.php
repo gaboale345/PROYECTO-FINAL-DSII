@@ -19,9 +19,10 @@ class CheckRole
             return redirect()->route('login');
         }
 
-        $idRol = (string) ($user->id_rol ?? 1);
+        $idRol = (int) ($user->id_rol ?? 1);
+        $rolesPermitidos = array_map('intval', $roles);
 
-        if (!in_array($idRol, $roles, true) && !in_array('*', $roles, true)) {
+        if (!in_array($idRol, $rolesPermitidos, true) && !in_array('*', $roles, true)) {
             abort(403, 'No tienes permisos para acceder a esta sección.');
         }
 

@@ -36,17 +36,30 @@ class IncidenteController extends Controller
         private UsuarioSyncService $usuarioSync
     ) {}
 
-    public function index()
+    public function index(Request $request)
     {
         $this->ensureDefaultTiposDelito();
 
-        $incidentes = Incidente::with(['reportante', 'tipoDelito', 'validador'])
-            ->latest('fecha_hora')
-            ->paginate(20);
+        $alcance = $request->get('alcance', 'mi_barrio');
+        if (!in_array($alcance, ['mi_barrio', 'todos'], true)) {
+            $alcance = 'mi_barrio';
+        }
 
+        $query = Incidente::with(['reportante.barrio', 'tipoDelito', 'validador'])
+            ->where('es_falso_reporte', false)
+            ->whereNull('id_incidente_principal');
+
+        if ($alcance === 'mi_barrio') {
+            $idBarrio = auth()->user()?->id_barrio;
+            if ($idBarrio) {
+                $query->whereHas('reportante', fn ($q) => $q->where('id_barrio', $idBarrio));
+            }
+        }
+
+        $incidentes = $query->latest('fecha_hora')->paginate(20)->withQueryString();
         $tiposDelito = TipoDelito::all();
 
-        return view('incidentes.index', compact('incidentes', 'tiposDelito'));
+        return view('incidentes.index', compact('incidentes', 'tiposDelito', 'alcance'));
     }
 
     public function create()

@@ -360,18 +360,25 @@
             <a class="nav-link text-white py-3" href="{{ route('dashboard') }}">
                 <i class="bi bi-speedometer2 me-2"></i> Dashboard
             </a>
-            <a class="nav-link text-white py-3" href="#">
-                <i class="bi bi-map me-2"></i> Mapa Predictivo
+            <a class="nav-link text-white py-3" href="{{ route('dashboard', ['barrio_id' => 'todos']) }}#map">
+                <i class="bi bi-map me-2"></i> Mapa (todos)
             </a>
             <a class="nav-link text-white py-3" href="{{ route('incidentes.create') }}">
                 <i class="bi bi-plus-circle me-2"></i> Nuevo Reporte
             </a>
-            <a class="nav-link text-white py-3" href="#">
-                <i class="bi bi-clock-history me-2"></i> Mi Historial
+            <a class="nav-link text-white py-3" href="{{ route('incidentes.index', ['alcance' => 'todos']) }}">
+                <i class="bi bi-clock-history me-2"></i> Todos los incidentes
             </a>
-            <a class="nav-link text-white py-3" href="#">
+            @if(auth()->user()?->puedeAdministrar())
+            <a class="nav-link text-white py-3" href="{{ route('admin.incidentes.index') }}">
+                <i class="bi bi-shield-lock me-2"></i> Admin incidentes
+            </a>
+            @endif
+            @if(auth()->user()?->puedeValidar())
+            <a class="nav-link text-white py-3" href="{{ route('reportes.mensual') }}">
                 <i class="bi bi-graph-up me-2"></i> Estadísticas
             </a>
+            @endif
             <a class="nav-link text-white py-3" href="#">
                 <i class="bi bi-robot me-2"></i> Análisis IA
             </a>
@@ -424,13 +431,24 @@
         <a class="nav-link text-white py-2" href="{{ route('incidentes.create') }}">
             <i class="bi bi-plus-circle me-2"></i> Nuevo Registro
         </a>
-        <a class="nav-link text-white py-2" href="{{ route('incidentes.index') }}">
-            <i class="bi bi-clock-history me-2"></i> Historial
+        <a class="nav-link text-white py-2" href="{{ route('incidentes.index', ['alcance' => 'mi_barrio']) }}">
+            <i class="bi bi-house me-2"></i> Mi barrio
+        </a>
+        <a class="nav-link text-white py-2" href="{{ route('incidentes.index', ['alcance' => 'todos']) }}">
+            <i class="bi bi-globe-americas me-2"></i> Todos los incidentes
+        </a>
+        <a class="nav-link text-white py-2" href="{{ route('dashboard', ['barrio_id' => 'todos']) }}#map">
+            <i class="bi bi-map me-2"></i> Mapa (todos)
         </a>
         @auth
         @if(auth()->user()->puedeValidar())
         <a class="nav-link text-white py-2" href="{{ route('reportes.mensual') }}">
             <i class="bi bi-graph-up me-2"></i> Estadísticas / PDF
+        </a>
+        @endif
+        @if(auth()->user()->puedeAdministrar())
+        <a class="nav-link text-white py-2" href="{{ route('admin.incidentes.index') }}">
+            <i class="bi bi-shield-lock me-2"></i> Admin incidentes
         </a>
         @endif
         <a class="nav-link text-white py-2" href="{{ route('alertas.index') }}">
@@ -513,9 +531,13 @@
         <i class="bi bi-house-door-fill"></i>
         <span>Inicio</span>
     </a>
-    <a href="{{ route('dashboard') }}#map" class="bottom-nav-item">
+    <a href="{{ route('dashboard', ['barrio_id' => 'todos']) }}#map" class="bottom-nav-item">
         <i class="bi bi-map-fill"></i>
         <span>Mapa</span>
+    </a>
+    <a href="{{ route('incidentes.index', ['alcance' => 'todos']) }}" class="bottom-nav-item {{ request()->routeIs('incidentes.index') ? 'active' : '' }}">
+        <i class="bi bi-list-ul"></i>
+        <span>Incidentes</span>
     </a>
     <a href="{{ route('incidentes.create') }}" class="bottom-nav-item">
         <i class="bi bi-plus-circle-fill text-danger"></i>
@@ -524,10 +546,6 @@
     <a href="{{ route('alertas.index') }}" class="bottom-nav-item {{ request()->routeIs('alertas.*') ? 'active' : '' }}">
         <i class="bi bi-bell-fill"></i>
         <span>Alertas</span>
-    </a>
-    <a href="{{ route('dashboard') }}" class="bottom-nav-item">
-        <i class="bi bi-person-fill"></i>
-        <span>Perfil</span>
     </a>
 </div>
 

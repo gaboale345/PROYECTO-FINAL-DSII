@@ -8,9 +8,16 @@
         <div class="card card-mobile">
             <div class="card-body p-4">
                 <!-- Botón volver -->
-                <a href="{{ route('incidentes.index') }}" class="btn btn-link text-decoration-none mb-3">
-                    <i class="bi bi-arrow-left"></i> Volver al listado
-                </a>
+                <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                    <a href="{{ route('incidentes.index') }}" class="btn btn-link text-decoration-none p-0">
+                        <i class="bi bi-arrow-left"></i> Volver al listado
+                    </a>
+                    @if(auth()->user()?->puedeAdministrar())
+                    <a href="{{ route('admin.incidentes.edit', $incidente->id_incidente) }}" class="btn btn-sm btn-outline-dark">
+                        <i class="bi bi-pencil"></i> Editar (admin)
+                    </a>
+                    @endif
+                </div>
                 
                 <h4 class="mb-3">
                     <i class="bi bi-exclamation-triangle-fill text-danger"></i>
@@ -97,8 +104,8 @@
                 </div>
                 @endif
                 
-                <!-- Botones de acción (solo para admins) -->
-                @if(!$incidente->validado && !$incidente->es_falso_reporte)
+                <!-- Botones de acción (solo junta vecinal y superadmin) -->
+                @if(auth()->user()?->puedeValidar() && !$incidente->validado && !$incidente->es_falso_reporte)
                 <div class="d-flex gap-2 mt-4">
                     <form action="{{ route('incidentes.validar', $incidente->id_incidente) }}" method="POST" class="flex-grow-1">
                         @csrf

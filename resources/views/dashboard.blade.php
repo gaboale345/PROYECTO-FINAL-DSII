@@ -67,25 +67,34 @@
     .trend-down { color: #2ecc71; }
 </style>
 
-<!-- Selector de barrio -->
+<!-- Selector de barrio / todos -->
 <div class="selector-barrio d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
         <i class="bi bi-geo-alt-fill text-primary"></i>
-        <span class="fw-semibold">Barrio:</span>
+        <span class="fw-semibold">Ver:</span>
         <select id="barrioSelector" class="form-select form-select-sm w-auto">
-            @forelse($barrios as $barrio)
-            <option value="{{ $barrio->id_barrio }}" {{ $barrioActual && $barrioActual->id_barrio == $barrio->id_barrio ? 'selected' : '' }}>
+            <option value="todos" {{ ($verTodos ?? false) ? 'selected' : '' }}>🌐 Todos los barrios</option>
+            @foreach($barrios as $barrio)
+            <option value="{{ $barrio->id_barrio }}" {{ !($verTodos ?? false) && $barrioActual && $barrioActual->id_barrio == $barrio->id_barrio ? 'selected' : '' }}>
                 {{ $barrio->nombre }}
             </option>
-            @empty
-            <option value="">Sin barrios configurados</option>
-            @endforelse
+            @endforeach
         </select>
     </div>
-    <button id="verMapaBtn" class="btn btn-sm btn-outline-primary">
-        <i class="bi bi-map"></i> Ver mapa
-    </button>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ route('incidentes.index', ['alcance' => 'todos']) }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-list-ul"></i> Todos los incidentes
+        </a>
+        <button id="verMapaBtn" type="button" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-map"></i> Ver mapa
+        </button>
+    </div>
 </div>
+@if($verTodos ?? false)
+<p class="text-muted small mb-3">Mostrando incidentes de <strong>todos los barrios</strong> (últimos 30 días).</p>
+@elseif($barrioActual)
+<p class="text-muted small mb-3">Barrio: <strong>{{ $barrioActual->nombre }}</strong></p>
+@endif
 
 <!-- Cards de resumen -->
 <div class="row g-3 mb-4">
@@ -269,66 +278,64 @@
         }).addTo(map);
         
         markersLayer = L.layerGroup().addTo(map);
-        
-        // Cargar incidentes iniciales
-        @if($barrioActual)
-        const barrioId = {{ $barrioActual->id_barrio }};
-        cargarIncidentesMapa(barrioId);
-        @endif
+
+        const barrioInicial = @json(($verTodos ?? false) ? 'todos' : ($barrioActual->id_barrio ?? null));
+        if (barrioInicial) {
+            cargarIncidentesMapa(barrioInicial);
+        }
+    }
+
+    function pintarGeojson(geojson, verTodosMapa) {
+        if (!markersLayer || !geojson?.features?.length) {
+            map.setView(centroSantaCruz, 13);
+            return;
+        }
+
+        const bounds = [];
+        geojson.features.forEach(feature => {
+            const coords = feature.geometry.coordinates;
+            const props = feature.properties || {};
+
+            let color = props.color || '#e74c3c';
+            if (props.tipo?.includes('Hurto')) color = '#f39c12';
+            if (props.tipo?.includes('Vandalismo')) color = '#e67e22';
+            if (props.tipo?.includes('Violencia')) color = '#8e44ad';
+
+            const marker = L.circleMarker([coords[1], coords[0]], {
+                radius: 8,
+                fillColor: color,
+                color: '#fff',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.8
+            }).addTo(markersLayer);
+
+            marker.bindPopup(`
+                <div style="min-width: 150px;">
+                    <strong>${props.tipo || 'Sin tipo'}</strong><br>
+                    ${props.barrio ? `<small>${props.barrio}</small><br>` : ''}
+                    <small>${props.fecha || ''}</small>
+                    ${props.descripcion ? `<br><small>${props.descripcion}</small>` : ''}
+                </div>
+            `);
+
+            bounds.push([coords[1], coords[0]]);
+        });
+
+        if (bounds.length > 0) {
+            map.fitBounds(bounds, { padding: [30, 30], maxZoom: verTodosMapa ? 12 : 16 });
+        }
     }
     
     function cargarIncidentesMapa(barrioId) {
         if (!markersLayer) return;
         markersLayer.clearLayers();
         
-        // Obtener datos del barrio vía AJAX
-        fetch(`/api/datos-barrio?barrio_id=${barrioId}`)
+        fetch(`/api/datos-barrio?barrio_id=${encodeURIComponent(barrioId)}`)
             .then(response => response.json())
             .then(data => {
-                if (data.geojson && data.geojson.features && data.geojson.features.length > 0) {
-                    data.geojson.features.forEach(feature => {
-                        const coords = feature.geometry.coordinates;
-                        const props = feature.properties;
-                        
-                        // Determinar color según tipo de incidente
-                        let color = '#e74c3c';
-                        if (props.tipo && props.tipo.includes('Hurto')) color = '#f39c12';
-                        if (props.tipo && props.tipo.includes('Vandalismo')) color = '#e67e22';
-                        if (props.tipo && props.tipo.includes('Violencia')) color = '#8e44ad';
-                        if (props.tipo && props.tipo.includes('Emergencia')) color = '#c0392b';
-                        
-                        // Crear marcador custom
-                        const marker = L.circleMarker([coords[1], coords[0]], {
-                            radius: 8,
-                            fillColor: color,
-                            color: '#fff',
-                            weight: 2,
-                            opacity: 1,
-                            fillOpacity: 0.8
-                        }).addTo(markersLayer);
-                        
-                        // Popup con información
-                        marker.bindPopup(`
-                            <div style="min-width: 150px;">
-                                <strong>${props.tipo || 'Sin tipo'}</strong><br>
-                                <small>${props.fecha || 'Fecha no disponible'}</small>
-                                ${props.descripcion ? `<br><small>${props.descripcion.substring(0, 80)}</small>` : ''}
-                                <br><a href="/incidentes" style="font-size: 12px;">Ver detalles →</a>
-                            </div>
-                        `);
-                    });
-                    
-                    // Ajustar vista para mostrar todos los marcadores
-                    const bounds = [];
-                    data.geojson.features.forEach(f => {
-                        bounds.push([f.geometry.coordinates[1], f.geometry.coordinates[0]]);
-                    });
-                    if (bounds.length > 0) {
-                        map.fitBounds(bounds);
-                    }
-                } else {
-                    // Si no hay incidentes, centrar en Santa Cruz
-                    map.setView(centroSantaCruz, 13);
+                if (data.geojson) {
+                    pintarGeojson(data.geojson, barrioId === 'todos');
                 }
             })
             .catch(error => console.error('Error al cargar incidentes:', error));
@@ -339,9 +346,7 @@
     if (barrioSelector) {
         barrioSelector.addEventListener('change', function() {
             const barrioId = this.value;
-            cargarIncidentesMapa(barrioId);
-            // Recargar página para actualizar estadísticas
-            window.location.href = `/dashboard?barrio_id=${barrioId}`;
+            window.location.href = `/dashboard?barrio_id=${barrioId}#map`;
         });
     }
     

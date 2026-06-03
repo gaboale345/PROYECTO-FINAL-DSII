@@ -21,133 +21,149 @@ class DashboardController extends Controller
      */
     public function index(Request $request)
     {
-        $barrios = Barrio::where('activo', true)->get();
+        $barrios = Barrio::where('activo', true)->orderBy('nombre')->get();
 
-        $barrioActual = $request->filled('barrio_id')
-            ? $barrios->firstWhere('id_barrio', (int) $request->barrio_id)
-            : null;
-        $barrioActual ??= $barrios->first();
-
-        if (!$barrioActual) {
-            return view('dashboard', $this->dashboardVacio($barrios));
+        if ($request->input('barrio_id') === 'todos') {
+            return view('dashboard', array_merge(
+                $this->obtenerDatosDashboard(null, $barrios),
+                ['barrioActual' => null, 'verTodos' => true]
+            ));
         }
 
-        $barrioId = $barrioActual->id_barrio;
+        $barrioActual = $this->resolverBarrioActual($request, $barrios);
 
-        // 1. Datos del barrio seleccionado
-        $totalIncidentes30d = Incidente::whereHas('reportante', function($q) use ($barrioId) {
-                $q->where('id_barrio', $barrioId);
-            })
-            ->where('fecha_hora', '>=', now()->subDays(30))
-            ->count();
-        
-        // Contar zonas críticas (barrios con alta incidencia)
-        $zonasCriticas = Barrio::whereHas('usuarios', function($q) {
-                $q->whereHas('incidentesReportados', function($sub) {
-                    $sub->where('fecha_hora', '>=', now()->subDays(30))
-                        ->where('validado', true);
-                });
-            })
-            ->withCount(['usuarios as incidentes_count' => function($q) {
-                $q->whereHas('incidentesReportados', function($sub) {
+        if (!$barrioActual) {
+            return view('dashboard', array_merge($this->dashboardVacio($barrios), ['verTodos' => false]));
+        }
+
+        return view('dashboard', array_merge(
+            $this->obtenerDatosDashboard($barrioActual->id_barrio, $barrios),
+            ['barrioActual' => $barrioActual, 'verTodos' => false]
+        ));
+    }
+
+    private function resolverBarrioActual(Request $request, $barrios): ?Barrio
+    {
+        if ($request->filled('barrio_id')) {
+            return $barrios->firstWhere('id_barrio', (int) $request->barrio_id);
+        }
+
+        $idBarrioUsuario = auth()->user()?->id_barrio;
+        if ($idBarrioUsuario) {
+            $barrioUsuario = $barrios->firstWhere('id_barrio', (int) $idBarrioUsuario);
+            if ($barrioUsuario) {
+                return $barrioUsuario;
+            }
+        }
+
+        return $barrios->first();
+    }
+
+    /**
+     * @param  int|null  $barrioId  null = todos los barrios
+     */
+    private function obtenerDatosDashboard(?int $barrioId, $barrios): array
+    {
+        $query30d = Incidente::query()->where('fecha_hora', '>=', now()->subDays(30));
+        $this->aplicarFiltroBarrio($query30d, $barrioId);
+        $totalIncidentes30d = (clone $query30d)->count();
+
+        $zonasCriticas = Barrio::whereHas('usuarios', function ($q) {
+            $q->whereHas('incidentesReportados', function ($sub) {
+                $sub->where('fecha_hora', '>=', now()->subDays(30))
+                    ->where('validado', true);
+            });
+        })
+            ->withCount(['usuarios as incidentes_count' => function ($q) {
+                $q->whereHas('incidentesReportados', function ($sub) {
                     $sub->where('fecha_hora', '>=', now()->subDays(30))
                         ->where('validado', true);
                 });
             }])
             ->having('incidentes_count', '>', 5)
             ->count();
-        
-        // Participación vecinal (usuarios activos que han reportado)
-        $participacionVecinal = Usuario::whereHas('incidentesReportados', function($q) {
-                $q->where('fecha_hora', '>=', now()->subDays(30));
-            })
-            ->count();
-        
-        // Calcular tendencia (comparación con período anterior)
-        $periodoActual = Incidente::whereHas('reportante', function($q) use ($barrioId) {
-                $q->where('id_barrio', $barrioId);
-            })
-            ->whereBetween('fecha_hora', [now()->subDays(30), now()])
-            ->count();
-        
-        $periodoAnterior = Incidente::whereHas('reportante', function($q) use ($barrioId) {
-                $q->where('id_barrio', $barrioId);
-            })
-            ->whereBetween('fecha_hora', [now()->subDays(60), now()->subDays(30)])
-            ->count();
-        
-        $tendencia = $periodoAnterior > 0 
+
+        $participacionVecinal = Usuario::whereHas('incidentesReportados', function ($q) {
+            $q->where('fecha_hora', '>=', now()->subDays(30));
+        })->count();
+
+        $periodoActualQuery = Incidente::query()
+            ->whereBetween('fecha_hora', [now()->subDays(30), now()]);
+        $this->aplicarFiltroBarrio($periodoActualQuery, $barrioId);
+        $periodoActual = $periodoActualQuery->count();
+
+        $periodoAnteriorQuery = Incidente::query()
+            ->whereBetween('fecha_hora', [now()->subDays(60), now()->subDays(30)]);
+        $this->aplicarFiltroBarrio($periodoAnteriorQuery, $barrioId);
+        $periodoAnterior = $periodoAnteriorQuery->count();
+
+        $tendencia = $periodoAnterior > 0
             ? round((($periodoActual - $periodoAnterior) / $periodoAnterior) * 100)
             : 0;
-        
-        // Determinar nivel de riesgo basado en incidentes
+
         $nivelRiesgo = $this->calcularNivelRiesgo($totalIncidentes30d);
-        
-        // 2. Datos para el mapa predictivo (incidentes del barrio)
-        $incidentesMapa = Incidente::with(['tipoDelito', 'reportante'])
-            ->whereHas('reportante', function($q) use ($barrioId) {
-                $q->where('id_barrio', $barrioId);
-            })
+
+        $incidentesMapaQuery = Incidente::with(['tipoDelito', 'reportante.barrio'])
             ->where('validado', true)
             ->where('es_falso_reporte', false)
-            ->where('fecha_hora', '>=', now()->subDays(30))
-            ->get();
-        
-        // 3. Tendencia de incidentes (últimas 4 semanas)
+            ->where('fecha_hora', '>=', now()->subDays(30));
+        $this->aplicarFiltroBarrio($incidentesMapaQuery, $barrioId);
+        $incidentesMapa = $incidentesMapaQuery->get();
+
         $tendenciaSemanas = [];
         for ($i = 3; $i >= 0; $i--) {
             $semanaInicio = now()->subDays(($i + 1) * 7);
             $semanaFin = now()->subDays($i * 7);
-            
-            $total = Incidente::whereHas('reportante', function($q) use ($barrioId) {
-                    $q->where('id_barrio', $barrioId);
-                })
-                ->whereBetween('fecha_hora', [$semanaInicio, $semanaFin])
-                ->count();
-            
+
+            $semanaQuery = Incidente::query()
+                ->whereBetween('fecha_hora', [$semanaInicio, $semanaFin]);
+            $this->aplicarFiltroBarrio($semanaQuery, $barrioId);
+
             $tendenciaSemanas[] = [
                 'fecha' => $semanaFin->format('M d'),
-                'total' => $total
+                'total' => $semanaQuery->count(),
             ];
         }
-        
-        $tendenciaSemanas = collect($tendenciaSemanas);
 
-        
-        // 4. Tipos de incidentes (distribución porcentual)
         $tiposIncidentes = TipoDelito::select('tipos_delito.nombre', DB::raw('COUNT(incidentes.id_incidente) as total'))
-            ->leftJoin('incidentes', function($join) use ($barrioId) {
+            ->leftJoin('incidentes', function ($join) use ($barrioId) {
                 $join->on('tipos_delito.id_tipo_delito', '=', 'incidentes.id_tipo_delito')
-                    ->join('usuarios', 'incidentes.id_usuario_reportante', '=', 'usuarios.id_usuario')
-                    ->where('usuarios.id_barrio', $barrioId)
                     ->where('incidentes.fecha_hora', '>=', now()->subDays(30));
+
+                if ($barrioId !== null) {
+                    $join->join('usuarios', 'incidentes.id_usuario_reportante', '=', 'usuarios.id_usuario')
+                        ->where('usuarios.id_barrio', $barrioId);
+                }
             })
             ->groupBy('tipos_delito.id_tipo_delito', 'tipos_delito.nombre')
             ->get();
-        
+
         $totalIncidentesTipo = $tiposIncidentes->sum('total');
         foreach ($tiposIncidentes as $tipo) {
-            $tipo->porcentaje = $totalIncidentesTipo > 0 
-                ? round(($tipo->total / $totalIncidentesTipo) * 100) 
+            $tipo->porcentaje = $totalIncidentesTipo > 0
+                ? round(($tipo->total / $totalIncidentesTipo) * 100)
                 : 0;
         }
-        
-        // 5. Datos para el mapa de calor (geojson)
-        $geojson = $this->generarGeoJson($incidentesMapa);
-        
-        return view('dashboard', compact(
-            'barrioActual',
-            'totalIncidentes30d',
-            'zonasCriticas',
-            'participacionVecinal',
-            'tendencia',
-            'nivelRiesgo',
-            'incidentesMapa',
-            'tendenciaSemanas',
-            'tiposIncidentes',
-            'geojson',
-            'barrios'
-        ));
+
+        return [
+            'totalIncidentes30d' => $totalIncidentes30d,
+            'zonasCriticas' => $zonasCriticas,
+            'participacionVecinal' => $participacionVecinal,
+            'tendencia' => $tendencia,
+            'nivelRiesgo' => $nivelRiesgo,
+            'incidentesMapa' => $incidentesMapa,
+            'tendenciaSemanas' => collect($tendenciaSemanas),
+            'tiposIncidentes' => $tiposIncidentes,
+            'geojson' => $this->generarGeoJson($incidentesMapa),
+            'barrios' => $barrios,
+        ];
+    }
+
+    private function aplicarFiltroBarrio($query, ?int $barrioId): void
+    {
+        if ($barrioId !== null) {
+            $query->whereHas('reportante', fn ($q) => $q->where('id_barrio', $barrioId));
+        }
     }
     
     /**
@@ -167,6 +183,7 @@ class DashboardController extends Controller
             'tiposIncidentes' => collect(),
             'geojson' => ['type' => 'FeatureCollection', 'features' => []],
             'barrios' => $barrios,
+            'verTodos' => false,
         ];
     }
 
@@ -201,6 +218,7 @@ class DashboardController extends Controller
                     'tipo' => $incidente->tipoDelito->nombre ?? 'Sin clasificar',
                     'descripcion' => substr($incidente->descripcion ?? 'Sin descripción', 0, 100),
                     'fecha' => $incidente->fecha_hora ? $incidente->fecha_hora->format('d/m/Y H:i') : 'N/A',
+                    'barrio' => $incidente->reportante?->barrio?->nombre ?? '',
                     'color' => $color,
                     'icono' => $this->getIconByTipo($incidente->tipoDelito->nombre ?? '')
                 ]
@@ -252,48 +270,37 @@ class DashboardController extends Controller
      */
     public function getDatosBarrio(Request $request)
     {
-        $barrioId = $request->get('barrio_id');
-        $barrio = $barrioId
-            ? Barrio::where('activo', true)->find($barrioId)
-            : Barrio::where('activo', true)->first();
-        
+        if ($request->input('barrio_id') === 'todos') {
+            $incidentes = Incidente::with(['tipoDelito', 'reportante.barrio'])
+                ->where('validado', true)
+                ->where('es_falso_reporte', false)
+                ->where('fecha_hora', '>=', now()->subDays(30))
+                ->get();
+
+            return response()->json([
+                'barrio' => ['nombre' => 'Todos los barrios', 'id_barrio' => 'todos'],
+                'total_incidentes' => $incidentes->count(),
+                'geojson' => $this->generarGeoJson($incidentes),
+            ]);
+        }
+
+        $barrio = Barrio::where('activo', true)->find($request->integer('barrio_id'));
+
         if (!$barrio) {
             return response()->json(['error' => 'Barrio no encontrado'], 404);
         }
-        
-        // Incidentes del barrio
-        $incidentes = Incidente::with(['tipoDelito'])
-            ->whereHas('reportante', function($q) use ($barrio) {
-                $q->where('id_barrio', $barrio->id_barrio);
-            })
+
+        $incidentes = Incidente::with(['tipoDelito', 'reportante.barrio'])
+            ->whereHas('reportante', fn ($q) => $q->where('id_barrio', $barrio->id_barrio))
             ->where('validado', true)
             ->where('es_falso_reporte', false)
             ->where('fecha_hora', '>=', now()->subDays(30))
             ->get();
-        
-        // Generar GeoJSON
-        $features = [];
-        foreach ($incidentes as $incidente) {
-            $features[] = [
-                'type' => 'Feature',
-                'geometry' => [
-                    'type' => 'Point',
-                    'coordinates' => [(float) $incidente->longitud, (float) $incidente->latitud]
-                ],
-                'properties' => [
-                    'tipo' => $incidente->tipoDelito->nombre ?? 'Sin clasificar',
-                    'fecha' => $incidente->fecha_hora ? $incidente->fecha_hora->format('d/m/Y H:i') : 'N/A'
-                ]
-            ];
-        }
-        
+
         return response()->json([
             'barrio' => $barrio,
             'total_incidentes' => $incidentes->count(),
-            'geojson' => [
-                'type' => 'FeatureCollection',
-                'features' => $features
-            ]
+            'geojson' => $this->generarGeoJson($incidentes),
         ]);
     }
 

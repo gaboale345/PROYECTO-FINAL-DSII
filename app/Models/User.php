@@ -74,12 +74,20 @@ class User extends Authenticatable
 
     public function esSuperAdmin(): bool
     {
-        return $this->id_rol === 4;
+        return (int) $this->id_rol === 4;
     }
 
+    public function puedeAdministrar(): bool
+    {
+        return $this->esSuperAdmin();
+    }
+
+    /**
+     * Solo Administrador Junta Vecinal (2) y SuperAdministrador (4).
+     */
     public function puedeValidar(): bool
     {
-        return in_array($this->id_rol, [2, 3, 4], true);
+        return in_array((int) $this->id_rol, [2, 4], true);
     }
 
     public function nombreRol(): string

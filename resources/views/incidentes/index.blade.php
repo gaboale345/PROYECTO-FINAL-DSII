@@ -66,6 +66,38 @@
     }
 </style>
 
+@if(auth()->user()?->puedeAdministrar())
+<div class="card card-mobile mb-3 border-0 overflow-hidden" style="background: linear-gradient(135deg, #1a252f, #2c3e50); color: #fff;">
+    <div class="card-body py-3 d-flex flex-wrap align-items-center gap-3">
+        <div class="flex-grow-1">
+            <div class="fw-semibold"><i class="bi bi-shield-lock me-1"></i> Modo administrador</div>
+            <div class="small opacity-75">CRUD completo: crear, editar y eliminar incidentes.</div>
+        </div>
+        <a href="{{ route('admin.incidentes.index') }}" class="btn btn-light btn-sm fw-semibold text-dark">
+            <i class="bi bi-gear me-1"></i> Abrir panel
+        </a>
+    </div>
+</div>
+@endif
+
+<div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+    <span class="text-muted small fw-semibold">Mostrar:</span>
+    <div class="btn-group btn-group-sm">
+        <a href="{{ route('incidentes.index', ['alcance' => 'mi_barrio']) }}"
+           class="btn btn-outline-primary {{ ($alcance ?? 'mi_barrio') === 'mi_barrio' ? 'active' : '' }}">
+            <i class="bi bi-house"></i> Mi barrio
+        </a>
+        <a href="{{ route('incidentes.index', ['alcance' => 'todos']) }}"
+           class="btn btn-outline-primary {{ ($alcance ?? '') === 'todos' ? 'active' : '' }}">
+            <i class="bi bi-globe-americas"></i> Todos los barrios
+        </a>
+    </div>
+    <a href="{{ route('dashboard', ['barrio_id' => ($alcance ?? '') === 'todos' ? 'todos' : auth()->user()?->id_barrio]) }}#map"
+       class="btn btn-sm btn-outline-secondary ms-auto">
+        <i class="bi bi-map"></i> Ver en mapa
+    </a>
+</div>
+
 <!-- Resumen estadístico -->
 <div class="stats-resumen">
     <div class="row text-center">
@@ -212,6 +244,12 @@
                         {{ $iconoTipo }} {{ $incidente->tipoDelito->nombre ?? 'Sin categoría' }}
                     </h6>
                     
+                    @if(($alcance ?? '') === 'todos' && $incidente->reportante?->barrio)
+                    <small class="text-primary d-block mb-1">
+                        <i class="bi bi-geo-alt-fill"></i> {{ $incidente->reportante->barrio->nombre }}
+                    </small>
+                    @endif
+
                     <!-- Descripción -->
                     @if($incidente->descripcion)
                     <p class="small text-muted mb-2">{{ Str::limit($incidente->descripcion, 100) }}</p>
